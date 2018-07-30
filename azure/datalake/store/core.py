@@ -316,7 +316,7 @@ class AzureDLFileSystem(object):
         """
         Sets the Access Control List (ACL) for a file or folder.
 
-        Note: this is not recursive, and applies only to the file or folder specified.
+        Note: this is not by  recursive, and applies only to the file or folder specified.
 
         Parameters
         ----------
@@ -340,7 +340,7 @@ class AzureDLFileSystem(object):
         If the entry does not exist it is added, otherwise it is updated based on the spec passed in.
         No entries are removed by this process (unlike set_acl).
 
-        Note: this is not recursive, and applies only to the file or folder specified.
+        Note: this is by default not recursive, and applies only to the file or folder specified.
 
         Parameters
         ----------
@@ -365,7 +365,7 @@ class AzureDLFileSystem(object):
         Default entries cannot be removed this way, please use remove_default_acl for that.
         Unnamed entries cannot be removed in this way, please use remove_acl for that.
 
-        Note: this is not recursive, and applies only to the file or folder specified.
+        Note: this is by default not recursive, and applies only to the file or folder specified.
 
         Parameters
         ----------
@@ -399,7 +399,7 @@ class AzureDLFileSystem(object):
         Removes the entire, non default, ACL from the file or folder, including unnamed entries.
         Default entries cannot be removed this way, please use remove_default_acl for that.
 
-        Note: this is not recursive, and applies only to the file or folder specified.
+        Note: this is by default not recursive, and applies only to the file or folder specified.
 
         Parameters
         ----------
@@ -420,7 +420,7 @@ class AzureDLFileSystem(object):
         Default entries do not exist on files, if a file
         is specified, this operation does nothing.
 
-        Note: this is not recursive, and applies only to the folder specified.
+        Note: this is by default not recursive, and applies only to the folder specified.
 
         Parameters
         ----------
