@@ -20,7 +20,7 @@ import logging
 import sys
 import time
 import uuid
-
+from recurseMethod import recurse_method
 
 # local imports
 from .exceptions import DatalakeBadOffsetException
@@ -312,7 +312,7 @@ class AzureDLFileSystem(object):
 
         return to_return
 
-    def set_acl(self, path, acl_spec):
+    def set_acl(self, path, acl_spec, recurse=False):
         """
         Sets the Access Control List (ACL) for a file or folder.
 
@@ -325,12 +325,16 @@ class AzureDLFileSystem(object):
         acl_spec: str
             The ACL specification to set on the path in the format
             '[default:]user|group|other:[entity id or UPN]:r|-w|-x|-,[default:]user|group|other:[entity id or UPN]:r|-w|-x|-,...'
+        recurse: bool
+            Specifies whether to change ACLs recursively or not
         """
+        if recurse:
+            recurse_method(AzureDLFileSystemObject=self, path=path, file_method=self.set_acl, dir_method=self.set_acl,
+                       file_method_kwargs={'acl_spec': acl_spec}, dir_method_kwargs={'acl_spec': acl_spec})
+        else:
+            self._acl_call('SETACL', path, acl_spec, invalidate_cache=True)
 
-        self._acl_call('SETACL', path, acl_spec, invalidate_cache=True)
-
-
-    def modify_acl_entries(self, path, acl_spec):
+    def modify_acl_entries(self, path, acl_spec, recurse=False):
         """
         Modifies existing Access Control List (ACL) entries on a file or folder.
         If the entry does not exist it is added, otherwise it is updated based on the spec passed in.
@@ -345,11 +349,16 @@ class AzureDLFileSystem(object):
         acl_spec: str
             The ACL specification to use in modifying the ACL at the path in the format
             '[default:]user|group|other:[entity id or UPN]:r|-w|-x|-,[default:]user|group|other:[entity id or UPN]:r|-w|-x|-,...'
+        recurse: bool
+            Specifies whether to change ACLs recursively or not
         """
-        self._acl_call('MODIFYACLENTRIES', path, acl_spec, invalidate_cache=True)
+        if recurse:
+            recurse_method(AzureDLFileSystemObject=self, path=path, file_method=self.modify_acl_entries, dir_method=self.modify_acl_entries,
+                       file_method_kwargs={'acl_spec': acl_spec}, dir_method_kwargs={'acl_spec': acl_spec})
+        else:
+            self._acl_call('MODIFYACLENTRIES', path, acl_spec, invalidate_cache=True)
 
-
-    def remove_acl_entries(self, path, acl_spec):
+    def remove_acl_entries(self, path, acl_spec, recurse=False):
         """
         Removes existing, named, Access Control List (ACL) entries on a file or folder.
         If the entry does not exist already it is ignored.
@@ -365,9 +374,14 @@ class AzureDLFileSystem(object):
         acl_spec: str
             The ACL specification to remove from the ACL at the path in the format (note that the permission portion is missing)
             '[default:]user|group|other:[entity id or UPN],[default:]user|group|other:[entity id or UPN],...'
+        recurse: bool
+            Specifies whether to change ACLs recursively or not
         """
-        self._acl_call('REMOVEACLENTRIES', path, acl_spec, invalidate_cache=True)
-
+        if recurse:
+            recurse_method(AzureDLFileSystemObject=self, path=path, file_method=self.remove_acl_entries, dir_method=self.remove_acl_entries,
+                       file_method_kwargs={'acl_spec': acl_spec}, dir_method_kwargs={'acl_spec': acl_spec})
+        else:
+            self._acl_call('REMOVEACLENTRIES', path, acl_spec, invalidate_cache=True)
 
     def get_acl_status(self, path):
         """
@@ -380,7 +394,7 @@ class AzureDLFileSystem(object):
         """
         return self._acl_call('MSGETACLSTATUS', path)['AclStatus']
 
-    def remove_acl(self, path):
+    def remove_acl(self, path, recurse=False):
         """
         Removes the entire, non default, ACL from the file or folder, including unnamed entries.
         Default entries cannot be removed this way, please use remove_default_acl for that.
@@ -391,11 +405,16 @@ class AzureDLFileSystem(object):
         ----------
         path: str
             Location to remove the ACL.
+        recurse: bool
+            Specifies whether to change ACLs recursively or not
         """
-        self._acl_call('REMOVEACL', path, invalidate_cache=True)
+        if recurse:
+            recurse_method(AzureDLFileSystemObject=self, path=path, file_method=self.remove_acl, dir_method=self.remove_acl,
+                       file_method_kwargs={}, dir_method_kwargs={})
+        else:
+            self._acl_call('REMOVEACL', path, invalidate_cache=True)
 
-
-    def remove_default_acl(self, path):
+    def remove_default_acl(self, path, recurse=False):
         """
         Removes the entire default ACL from the folder.
         Default entries do not exist on files, if a file
@@ -407,8 +426,14 @@ class AzureDLFileSystem(object):
         ----------
         path: str
             Location to set the ACL on.
+        recurse: bool
+            Specifies whether to change ACLs recursively or not
         """
-        self._acl_call('REMOVEDEFAULTACL', path, invalidate_cache=True)
+        if recurse:
+            recurse_method(AzureDLFileSystemObject=self, path=path, file_method=lambda: None,
+                           dir_method=self.remove_default_acl, file_method_kwargs={}, dir_method_kwargs={})
+        else:
+            self._acl_call('REMOVEDEFAULTACL', path, invalidate_cache=True)
 
 
     def chown(self, path, owner=None, group=None):
