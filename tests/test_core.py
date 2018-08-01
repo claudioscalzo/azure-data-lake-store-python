@@ -14,6 +14,7 @@ import datetime
 from azure.datalake.store import utils
 from azure.datalake.store.exceptions import PermissionError, FileNotFoundError
 from tests.testing import azure, second_azure, azure_teardown, my_vcr, posix, tmpfile, working_dir
+from contextlib import contextmanager
 test_dir = working_dir()
 
 a = posix(test_dir / 'a')
@@ -22,6 +23,71 @@ c = posix(test_dir / 'c')
 d = posix(test_dir / 'd')
 specialCharFile = posix(test_dir / '12,+3#456?.txt')
 
+@contextmanager
+def setup_tree(azure):
+    """
+    Creates a directory structure on given instance for testing and removes it when out of scope
+        data/
+        |── a/
+        |   |── x.csv
+        |   |── y.csv
+        |   |── z.txt
+        |── b/
+        |   |── x.csv
+        |   |── y.csv
+        |   |── z.txt
+        |── empty/
+        |── single/
+            └── single/
+                    |── single
+        |── x.csv
+        |── y.csv
+        |── z.txt
+    :param azure: ADLS instance
+    :return: None
+    """
+    for directory in ['', 'data/a', 'data/b']:
+        azure.mkdir(test_dir / directory)
+        for filename in ['x.csv', 'y.csv', 'z.txt']:
+            with azure.open(test_dir / directory / filename, 'wb') as f:
+                f.write(b'123456')
+    azure.mkdir(test_dir / 'data/empty')
+    azure.mkdir(test_dir / 'data/single/single')
+    with azure.open(test_dir / 'data/single/single' / 'single.txt', 'wb') as f:
+        f.write(b'123456')
+    try:
+        yield
+    finally:
+        for path in azure.ls(test_dir, invalidate_cache=False):
+            if azure.exists(path, invalidate_cache=False):
+                azure.rm(path, recursive=True)
+
+@my_vcr.use_cassette
+def test_set_acl(azure):
+    with setup_tree(azure):
+        def test_acl_entry(path, user, check_default=False):
+            x = azure.get_acl_status(path)
+            if check_default:
+                prefix = 'default'
+            else:
+                prefix = ''
+            for acl_spec in x['entries']:
+                if acl_spec.startswith(prefix) and user in acl_spec:
+                    return True
+            return False
+
+        import time
+        dir_acl = azure.get_acl_status(test_dir / 'data')
+        owner_user_id = dir_acl['owner']
+
+        path = test_dir / 'data' / 'single'
+        print(azure.get_acl_status(path))
+        start = time.time()
+        azure.remove_default_acl(test_dir / 'data', recursive=True)
+        end = time.time()
+        print(end - start)
+        print(azure.get_acl_status(path))
+        assert not test_acl_entry(path, owner_user_id, check_default=True)
 
 @my_vcr.use_cassette
 def test_simple(azure):
