@@ -20,7 +20,6 @@ import logging
 import sys
 import time
 import uuid
-from recurseMethod import recurse_method
 
 # local imports
 from .exceptions import DatalakeBadOffsetException
@@ -312,7 +311,7 @@ class AzureDLFileSystem(object):
 
         return to_return
 
-    def set_acl(self, path, acl_spec, recurse=False):
+    def set_acl(self, path, acl_spec, recursive=False):
         """
         Sets the Access Control List (ACL) for a file or folder.
 
@@ -325,16 +324,16 @@ class AzureDLFileSystem(object):
         acl_spec: str
             The ACL specification to set on the path in the format
             '[default:]user|group|other:[entity id or UPN]:r|-w|-x|-,[default:]user|group|other:[entity id or UPN]:r|-w|-x|-,...'
-        recurse: bool
+        recursive: bool
             Specifies whether to change ACLs recursively or not
         """
-        if recurse:
+        if recursive:
             recurse_method(AzureDLFileSystemObject=self, path=path, file_method=self.set_acl, dir_method=self.set_acl,
                        file_method_kwargs={'acl_spec': acl_spec}, dir_method_kwargs={'acl_spec': acl_spec})
         else:
             self._acl_call('SETACL', path, acl_spec, invalidate_cache=True)
 
-    def modify_acl_entries(self, path, acl_spec, recurse=False):
+    def modify_acl_entries(self, path, acl_spec, recursive=False):
         """
         Modifies existing Access Control List (ACL) entries on a file or folder.
         If the entry does not exist it is added, otherwise it is updated based on the spec passed in.
@@ -349,16 +348,16 @@ class AzureDLFileSystem(object):
         acl_spec: str
             The ACL specification to use in modifying the ACL at the path in the format
             '[default:]user|group|other:[entity id or UPN]:r|-w|-x|-,[default:]user|group|other:[entity id or UPN]:r|-w|-x|-,...'
-        recurse: bool
+        recursive: bool
             Specifies whether to change ACLs recursively or not
         """
-        if recurse:
+        if recursive:
             recurse_method(AzureDLFileSystemObject=self, path=path, file_method=self.modify_acl_entries, dir_method=self.modify_acl_entries,
                        file_method_kwargs={'acl_spec': acl_spec}, dir_method_kwargs={'acl_spec': acl_spec})
         else:
             self._acl_call('MODIFYACLENTRIES', path, acl_spec, invalidate_cache=True)
 
-    def remove_acl_entries(self, path, acl_spec, recurse=False):
+    def remove_acl_entries(self, path, acl_spec, recursive=False):
         """
         Removes existing, named, Access Control List (ACL) entries on a file or folder.
         If the entry does not exist already it is ignored.
@@ -374,10 +373,10 @@ class AzureDLFileSystem(object):
         acl_spec: str
             The ACL specification to remove from the ACL at the path in the format (note that the permission portion is missing)
             '[default:]user|group|other:[entity id or UPN],[default:]user|group|other:[entity id or UPN],...'
-        recurse: bool
+        recursive: bool
             Specifies whether to change ACLs recursively or not
         """
-        if recurse:
+        if recursive:
             recurse_method(AzureDLFileSystemObject=self, path=path, file_method=self.remove_acl_entries, dir_method=self.remove_acl_entries,
                        file_method_kwargs={'acl_spec': acl_spec}, dir_method_kwargs={'acl_spec': acl_spec})
         else:
@@ -394,7 +393,7 @@ class AzureDLFileSystem(object):
         """
         return self._acl_call('MSGETACLSTATUS', path)['AclStatus']
 
-    def remove_acl(self, path, recurse=False):
+    def remove_acl(self, path, recursive=False):
         """
         Removes the entire, non default, ACL from the file or folder, including unnamed entries.
         Default entries cannot be removed this way, please use remove_default_acl for that.
@@ -405,16 +404,16 @@ class AzureDLFileSystem(object):
         ----------
         path: str
             Location to remove the ACL.
-        recurse: bool
+        recursive: bool
             Specifies whether to change ACLs recursively or not
         """
-        if recurse:
-            recurse_method(AzureDLFileSystemObject=self, path=path, file_method=self.remove_acl, dir_method=self.remove_acl,
-                       file_method_kwargs={}, dir_method_kwargs={})
+        if recursive:
+            recurse_method(AzureDLFileSystemObject=self, path=path, file_method=self.remove_acl,
+                           dir_method=self.remove_acl)
         else:
             self._acl_call('REMOVEACL', path, invalidate_cache=True)
 
-    def remove_default_acl(self, path, recurse=False):
+    def remove_default_acl(self, path, recursive=False):
         """
         Removes the entire default ACL from the folder.
         Default entries do not exist on files, if a file
@@ -426,12 +425,11 @@ class AzureDLFileSystem(object):
         ----------
         path: str
             Location to set the ACL on.
-        recurse: bool
+        recursive: bool
             Specifies whether to change ACLs recursively or not
         """
-        if recurse:
-            recurse_method(AzureDLFileSystemObject=self, path=path, file_method=lambda: None,
-                           dir_method=self.remove_default_acl, file_method_kwargs={}, dir_method_kwargs={})
+        if recursive:
+            recurse_method(AzureDLFileSystemObject=self, path=path, dir_method=self.remove_default_acl)
         else:
             self._acl_call('REMOVEDEFAULTACL', path, invalidate_cache=True)
 
@@ -1129,3 +1127,97 @@ class AzureDLPath(type(pathlib.PurePath())):
     def trim(self):
         """ Return path without anchor (concatenation of drive and root). """
         return self.relative_to(self.anchor)
+
+
+import Queue
+from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
+
+def recurse_method(AzureDLFileSystemObject=None, path=None, file_method=None, dir_method=None,
+                   file_method_kwargs={}, dir_method_kwargs={}):
+    """General purpose framework for traversing the dir tree and applying methods on files and dirs"""
+    dir_queue = Queue.Queue()
+    file_queue = Queue.Queue()
+    dir_pool = ThreadPoolExecutor(max_workers=1)# multiprocessing.cpu_count()*3)
+    file_pool = ThreadPoolExecutor(max_workers=1)# multiprocessing.cpu_count()*10)
+    main_pool = ThreadPoolExecutor(max_workers=2)
+
+
+    def zero_threads_still_in_thread_pool(thread_pool):
+        #TODO Is there a better way than accessing private members
+        return len(thread_pool._threads) == 0 and thread_pool._work_queue.qsize() == 0
+
+    def list_status(dir_path, ls_arguments={'detail': True}):
+        #TODO Replace with Minimal API call Or more generic method call
+        folders = AzureDLFileSystemObject.ls(dir_path, **ls_arguments)
+        result = []
+        for elements in folders:
+            try:
+                reduced_details = {key: elements[key] for key in ['type', 'pathSuffix']}
+                result.append(reduced_details)
+            except KeyError:
+                #TODO Logging
+                pass
+        return result
+
+    def dir_processor(dir_path):
+        print("In dir processor at", dir_path)
+        try:
+            if dir_method is not None:
+                dir_method(path=dir_path, **dir_method_kwargs)
+        except:
+            print("Failure on "+dir_path)
+            pass
+
+        for end_path in list_status(dir_path=dir_path):
+            complete_path = AzureDLPath(dir_path / end_path['pathSuffix'])
+            if end_path['type'] == 'DIRECTORY':
+                dir_queue.put(complete_path)
+            else:
+                file_queue.put(complete_path)
+        print("check", dir_path)
+
+    def dir_thread():
+        print("In dir thread")
+        while not dir_queue.empty() or not zero_threads_still_in_thread_pool(dir_pool):
+            if dir_queue.empty():
+                continue
+            else:
+                dir_path = dir_queue.get()
+                print("Submitting thread to dirpool", dir_path)
+                dir_pool.submit(dir_processor(dir_path))
+                dir_queue.task_done()
+
+    def file_processor(file_path):
+        try:
+            file_method(path=file_path, **file_method_kwargs)
+        except:
+            print("Failure on ",file_path)
+
+    def file_thread():
+        while not file_queue.empty() or not dir_queue.empty() or not zero_threads_still_in_thread_pool(dir_pool):
+            if file_queue.empty():
+                continue
+            else:
+                file_path = file_queue.get()
+                file_queue.task_done()
+                if file_method is not None:
+                    file_pool.submit(file_processor(file_path))
+
+    dir_processor(path)
+    main_pool.submit(dir_thread)
+    main_pool.submit(file_thread)
+
+    while not file_queue.empty() or not dir_queue.empty() or not zero_threads_still_in_thread_pool(
+            file_pool) or not zero_threads_still_in_thread_pool(dir_pool):
+        fq = not file_queue.empty()
+        dq = not dir_queue.empty()
+        fp = not zero_threads_still_in_thread_pool(file_pool)
+        dp = not zero_threads_still_in_thread_pool(dir_pool)
+        if not file_queue.empty() and zero_threads_still_in_thread_pool(file_pool):
+            main_pool.submit(file_thread)
+        if not dir_queue.empty() and zero_threads_still_in_thread_pool(dir_pool):
+            main_pool.submit(file_thread)
+        time.sleep(1)
+
+

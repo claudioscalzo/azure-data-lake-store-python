@@ -1,7 +1,7 @@
 import Queue
 from concurrent.futures import ThreadPoolExecutor
 import multiprocessing
-
+from .core import AzureDLPath
 
 def recurse_method(AzureDLFileSystemObject=None, path=None, file_method=lambda: None, dir_method=lambda: None,
                    file_method_kwargs={}, dir_method_kwargs={}):
@@ -30,21 +30,22 @@ def recurse_method(AzureDLFileSystemObject=None, path=None, file_method=lambda: 
         return result
 
     def dir_processor(dir_path):
+        print("Executing in dir processor")
         try:
             dir_method(path=dir_path, **dir_method_kwargs)
         except:
-            # TODO Logging
+            print("Failure on "+dir_path)
             pass
 
         for x in list_status(dir_path=dir_path):
+            complete_path = AzureDLPath(dir_path / x['pathSuffix'])
             if x['type'] == 'DIRECTORY':
-                complete_path = dir_path + '/' + x['pathSuffix']
                 dir_queue.put(complete_path)
             else:
-                complete_path = dir_path + '/' + x['pathSuffix']
                 file_queue.put(complete_path)
 
     def dir_thread():
+        print("Executing in dir thread")
         while not dir_queue.empty() or threads_still_in_thread_pool(dir_pool):
             if dir_queue.empty():
                 continue
@@ -53,13 +54,16 @@ def recurse_method(AzureDLFileSystemObject=None, path=None, file_method=lambda: 
                 dir_pool.submit(dir_processor(dir_path))
 
     def file_processor(file_path):
+        print("Executing in file processor")
         try:
             file_method(path=file_path, **file_method_kwargs)
         except:
             # TODO Logging
+            print("Failure on "+file_path)
             pass
 
     def file_thread():
+        print("Executing in file thread")
         while not file_queue.empty() or not dir_queue.empty() or threads_still_in_thread_pool(dir_pool):
             if file_queue.empty():
                 continue
