@@ -393,46 +393,34 @@ class AzureDLFileSystem(object):
         """
         return self._acl_call('MSGETACLSTATUS', path)['AclStatus']
 
-    def remove_acl(self, path, recursive=False):
+    def remove_acl(self, path):
         """
         Removes the entire, non default, ACL from the file or folder, including unnamed entries.
         Default entries cannot be removed this way, please use remove_default_acl for that.
 
-        Note: this is by default not recursive, and applies only to the file or folder specified.
+        Note: this is not recursive, and applies only to the file or folder specified.
 
         Parameters
         ----------
         path: str
             Location to remove the ACL.
-        recursive: bool
-            Specifies whether to change ACLs recursively or not
         """
-        if recursive:
-            recurse_method(AzureDLFileSystemObject=self, path=path, file_method=self.remove_acl,
-                           dir_method=self.remove_acl)
-        else:
-            self._acl_call('REMOVEACL', path, invalidate_cache=True)
+        self._acl_call('REMOVEACL', path, invalidate_cache=True)
 
-    def remove_default_acl(self, path, recursive=False):
+    def remove_default_acl(self, path):
         """
         Removes the entire default ACL from the folder.
         Default entries do not exist on files, if a file
         is specified, this operation does nothing.
 
-        Note: this is by default not recursive, and applies only to the folder specified.
+        Note: this is not recursive, and applies only to the folder specified.
 
         Parameters
         ----------
         path: str
             Location to set the ACL on.
-        recursive: bool
-            Specifies whether to change ACLs recursively or not
         """
-        if recursive:
-            recurse_method(AzureDLFileSystemObject=self, path=path, dir_method=self.remove_default_acl)
-        else:
-            self._acl_call('REMOVEDEFAULTACL', path, invalidate_cache=True)
-
+        self._acl_call('REMOVEDEFAULTACL', path, invalidate_cache=True)
 
     def chown(self, path, owner=None, group=None):
         """
@@ -1136,13 +1124,13 @@ class CountUpDownLatch:
 
     def increment(self):
         self.lock.acquire()
-        self.val +=1
+        self.val += 1
         self.lock.release()
 
     def decrement(self):
         self.lock.acquire()
         self.val -= 1
-        if self.val <=0:
+        if self.val <= 0:
             self.lock.notifyAll()
         self.lock.release()
 
@@ -1179,7 +1167,6 @@ def recurse_method(AzureDLFileSystemObject=None, path=None, file_method=None, di
             if apath['type'] == 'DIRECTORY':
                 sub_elements = adl._ls(apath['name'], invalidate_cache)
                 fi.extend(sub_elements)
-
         return fi
 
     def dir_processor(dir_path):
@@ -1212,7 +1199,6 @@ def recurse_method(AzureDLFileSystemObject=None, path=None, file_method=None, di
 
     while not file_processed_lock.isZero() and not dir_processed_lock.isZero():
         pass
-
 
 
 
