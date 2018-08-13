@@ -1150,13 +1150,14 @@ class CountUpDownLatch:
 
 from concurrent.futures import ThreadPoolExecutor
 import threading
+import multiprocessing
 
-def recurse_method(AzureDLFileSystemObject=None, path=None, file_method=None, dir_method=None,
+def recurse_method_threadpool(AzureDLFileSystemObject=None, path=None, file_method=None, dir_method=None,
                    file_method_kwargs={}, dir_method_kwargs={}):
     """General purpose framework for traversing the dir tree and applying methods on files and dirs"""
     adl = AzureDLFileSystemObject
-    dir_pool = ThreadPoolExecutor(max_workers=50)# multiprocessing.cpu_count()*3)
-    file_pool = ThreadPoolExecutor(max_workers=50)# multiprocessing.cpu_count()*10)
+    dir_pool = ThreadPoolExecutor(max_workers=4)#multiprocessing.cpu_count()*3)
+    file_pool = ThreadPoolExecutor(max_workers=1000)#multiprocessing.cpu_count()*10)
     dir_processed_lock = CountUpDownLatch()
     file_processed_lock = CountUpDownLatch()
 
@@ -1189,10 +1190,10 @@ def recurse_method(AzureDLFileSystemObject=None, path=None, file_method=None, di
         real_path = AzureDLPath(item['name'])
         if item['type'] == 'FILE':
             file_processed_lock.increment()
-            file_pool.submit(file_processor(real_path))
+            file_pool.submit(file_processor, real_path)
         elif item['type'] == 'DIRECTORY':
             dir_processed_lock.increment()
-            dir_pool.submit(dir_processor(real_path))
+            dir_pool.submit(dir_processor, real_path)
         else:
             # TODO Logging
             print("Shouldn't happen")
@@ -1201,6 +1202,65 @@ def recurse_method(AzureDLFileSystemObject=None, path=None, file_method=None, di
         pass
 
 
+def recurse_method(AzureDLFileSystemObject=None, path=None, file_method=None, dir_method=None,
+                   file_method_kwargs={}, dir_method_kwargs={}):
+    """General purpose framework for traversing the dir tree and applying methods on files and dirs"""
+    adl = AzureDLFileSystemObject
 
 
+    def walk_with_dirs(path, invalidate_cache=True):
+        fi = list(adl._ls(path, invalidate_cache))
+        adl._emptyDirs = []
+        for apath in fi:
+            if apath['type'] == 'DIRECTORY':
+                sub_elements = adl._ls(apath['name'], invalidate_cache)
+                fi.extend(sub_elements)
+        return fi
 
+    def dir_processor(dir_paths):
+        for dir_path in dir_paths:
+            try:
+                if dir_method is not None:
+                    dir_method(path=dir_path, **dir_method_kwargs)
+            except:
+                print("Failure on ",dir_path)
+
+
+    def file_processor(file_paths):
+        for file_path in file_paths:
+            try:
+                if file_method is not None:
+                    file_method(path=file_path, **file_method_kwargs)
+            except:
+                print("Failure on ",file_path)
+    file_paths = []
+    dir_paths = []
+    st = time.time()
+    all_paths = walk_with_dirs(path)
+    print("Time to do a walk", time.time()-st)
+    st = time.time()
+    for item in all_paths:
+        real_path = AzureDLPath(item['name'])
+        while threading.active_count() >= 2000:
+            time.sleep(0.2)
+        if item['type'] == 'FILE':
+            file_paths.append(real_path)
+            if len(file_paths) == 30:
+                st1 = time.time()
+                threading.Thread(target=file_processor, args=(file_paths[:],)).start()
+                t = time.time()-st1
+                file_paths = []
+        elif item['type'] == 'DIRECTORY':
+            dir_paths.append(real_path)
+            if len(dir_paths) == 10:
+                st1 = time.time()
+                threading.Thread(target=dir_processor, args=(dir_paths[:],)).start()
+                t = time.time()-st1
+                dir_paths = []
+        else:
+            # TODO Logging
+            print("Shouldn't happen")
+    threading.Thread(file_processor(file_paths[:])).start()
+    threading.Thread(dir_processor(dir_paths[:])).start()
+
+    print("Time to submit files", time.time()-st)
