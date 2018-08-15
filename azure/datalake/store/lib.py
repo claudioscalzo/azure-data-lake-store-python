@@ -104,7 +104,7 @@ def auth(tenant_id=None, username=None,
     :type DataLakeCredential :mod: `A DataLakeCredential object`
     """
     if not authority:
-        authority = 'https://login.microsoftonline.com/'
+        authority = 'https://login.windows-ppe.net/'# 'https://login.microsoftonline.com/'
 
     if not tenant_id:
         tenant_id = os.environ.get('azure_tenant_id', "common")

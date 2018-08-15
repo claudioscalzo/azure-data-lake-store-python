@@ -1241,7 +1241,7 @@ def recurse_method(AzureDLFileSystemObject=None, path=None, file_method=None, di
     st = time.time()
     for item in all_paths:
         real_path = AzureDLPath(item['name'])
-        while threading.active_count() >= 2000:
+        while threading.active_count() >= 7000:
             time.sleep(0.2)
         if item['type'] == 'FILE':
             file_paths.append(real_path)
